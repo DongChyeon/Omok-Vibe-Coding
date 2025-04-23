@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas 오목 게임</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; }
+    canvas { border: 1px solid #333; margin-top: 20px; background-color: #f0d9b5; }
+    #status { margin-top: 10px; font-size: 18px; }
+    #controls { margin-top: 10px; }
+    #undoButton { font-size: 16px; padding: 5px 10px; }
+  </style>
+</head>
+<body>
+  <h1>오목 게임 (Canvas)</h1>
+  <div id="status">흑돌 차례</div>
+  <div id="controls">
+    <button id="undoButton">되돌리기</button>
+  </div>
+  <canvas id="board" width="600" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const size = 15;
+    const cellSize = canvas.width / size;
+    const board = Array.from({ length: size }, () => Array(size).fill(0));
+    let currentPlayer = 1; // 1: black, 2: white
+    let gameOver = false;
+    const history = [];
+
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f0d9b5';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#000';
+      for (let i = 0; i < size; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cellSize / 2, i * cellSize + cellSize / 2);
+        ctx.lineTo(canvas.width - cellSize / 2, i * cellSize + cellSize / 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(i * cellSize + cellSize / 2, cellSize / 2);
+        ctx.lineTo(i * cellSize + cellSize / 2, canvas.height - cellSize / 2);
+        ctx.stroke();
+      }
+    }
+
+    function drawStones() {
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (board[y][x] !== 0) {
+            ctx.beginPath();
+            ctx.arc(
+              x * cellSize + cellSize / 2,
+              y * cellSize + cellSize / 2,
+              cellSize / 2.5,
+              0, Math.PI * 2
+            );
+            ctx.fillStyle = board[y][x] === 1 ? 'black' : 'white';
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function checkWinner(x, y, color) {
+        const directions = [
+            [1, 0], [0, 1], [1, 1], [1, -1]
+        ];
+        for (const [dx, dy] of directions) {
+            let count = 1;
+
+            for (let dir = -1; dir <= 1; dir += 2) {
+            let nx = x + dx * dir;
+            let ny = y + dy * dir;
+            while (
+                nx >= 0 && ny >= 0 && nx < size && ny < size &&
+                board[ny][nx] === color
+            ) {
+                count++;
+                nx += dx * dir;
+                ny += dy * dir;
+            }
+            }
+
+            if (count >= 5) return true;
+        }
+        return false;
+    }
+
+    function countOpenSequences(x, y, color, length) {
+      const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
+      let openCount = 0;
+      for (const [dx, dy] of directions) {
+        let count = 1;
+        let openEnds = 0;
+
+        for (let dir = -1; dir <= 1; dir += 2) {
+          let nx = x + dx * dir;
+          let ny = y + dy * dir;
+          while (
+            nx >= 0 && ny >= 0 && nx < size && ny < size &&
+            board[ny][nx] === color
+          ) {
+            count++;
+            nx += dx * dir;
+            ny += dy * dir;
+          }
+          if (nx >= 0 && ny >= 0 && nx < size && ny < size && board[ny][nx] === 0) {
+            openEnds++;
+          }
+        }
+
+        if (count === length && openEnds === 2) {
+          openCount++;
+        }
+      }
+      return openCount;
+    }
+
+    function isForbiddenMove(x, y) {
+      if (board[y][x] !== 0 || currentPlayer !== 1) return false;
+      board[y][x] = 1;
+      const doubleThree = countOpenSequences(x, y, 1, 3) >= 2;
+      const doubleFour = countOpenSequences(x, y, 1, 4) >= 2;
+      board[y][x] = 0;
+      return doubleThree || doubleFour;
+    }
+
+    function drawForbiddenMarks() {
+      if (currentPlayer !== 1) return;
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (isForbiddenMove(x, y)) {
+            const cx = x * cellSize + cellSize / 2;
+            const cy = y * cellSize + cellSize / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 10, cy - 10);
+            ctx.lineTo(cx + 10, cy + 10);
+            ctx.moveTo(cx + 10, cy - 10);
+            ctx.lineTo(cx - 10, cy + 10);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.lineWidth = 1;
+    }
+
+    function drawAll() {
+      drawBoard();
+      drawStones();
+      drawForbiddenMarks();
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (gameOver) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / cellSize);
+      const y = Math.floor((e.clientY - rect.top) / cellSize);
+
+      if (board[y][x] === 0 && (!isForbiddenMove(x, y) || currentPlayer === 2)) {
+        board[y][x] = currentPlayer;
+        history.push({ x, y, player: currentPlayer });
+
+        if (checkWinner(x, y, currentPlayer)) {
+          document.getElementById('status').textContent = (currentPlayer === 1 ? '흑돌' : '백돌') + ' 승리!';
+          gameOver = true;
+        } else {
+          currentPlayer = 3 - currentPlayer;
+          document.getElementById('status').textContent = currentPlayer === 1 ? '흑돌 차례' : '백돌 차례';
+        }
+        drawAll();
+      }
+    });
+
+    document.getElementById('undoButton').addEventListener('click', () => {
+      if (history.length === 0 || gameOver) return;
+      const last = history.pop();
+      board[last.y][last.x] = 0;
+      currentPlayer = last.player;
+      document.getElementById('status').textContent = currentPlayer === 1 ? '흑돌 차례' : '백돌 차례';
+      gameOver = false;
+      drawAll();
+    });
+
+    drawAll();
+  </script>
+</body>
+</html>
